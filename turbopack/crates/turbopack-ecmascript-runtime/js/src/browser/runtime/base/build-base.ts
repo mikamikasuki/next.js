@@ -51,6 +51,14 @@ function instantiateModule(
   const exports = module.exports
 
   moduleCache.set(id, module)
+  // A scope-hoisted factory can be registered under every externally exposed module ID in its
+  // group. Reserve those IDs before running the factory so a cyclic import through another entry
+  // point sees the in-progress module instead of invoking the same group factory again.
+  for (const aliasId of getModuleFactoryModuleIds(moduleFactory)) {
+    if (!moduleCache.has(aliasId)) {
+      moduleCache.set(aliasId, createModuleObject(aliasId))
+    }
+  }
 
   // NOTE(alexkirsz) This can fail when the module encounters a runtime error.
   const context = new (Context as any as ContextConstructor<Module>)(
@@ -60,7 +68,10 @@ function instantiateModule(
   try {
     moduleFactory(context, module, exports)
   } catch (error) {
-    module.error = error as any
+    for (const aliasId of getModuleFactoryModuleIds(moduleFactory)) {
+      const aliasModule = moduleCache.get(aliasId)
+      if (aliasModule) aliasModule.error = error as any
+    }
     throw error
   }
 

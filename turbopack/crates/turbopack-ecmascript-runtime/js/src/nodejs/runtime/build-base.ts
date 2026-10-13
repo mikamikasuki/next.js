@@ -43,6 +43,14 @@ function instantiateModule(
   const module: ModuleWithDirection = createModuleWithDirection(id)
   const exports = module.exports
   moduleCache.set(id, module)
+  // A scope-hoisted factory can be registered under every externally exposed module ID in its
+  // group. Reserve those IDs before running the factory so a cyclic import through another entry
+  // point sees the in-progress module instead of invoking the same group factory again.
+  for (const aliasId of getModuleFactoryModuleIds(moduleFactory)) {
+    if (!moduleCache.has(aliasId)) {
+      moduleCache.set(aliasId, createModuleWithDirection(aliasId))
+    }
+  }
 
   const context =
     new (Context as any as ContextConstructor<ModuleWithDirection>)(
@@ -53,11 +61,17 @@ function instantiateModule(
   try {
     moduleFactory(context, module, exports)
   } catch (error) {
-    module.error = error as any
+    for (const aliasId of getModuleFactoryModuleIds(moduleFactory)) {
+      const aliasModule = moduleCache.get(aliasId)
+      if (aliasModule) aliasModule.error = error as any
+    }
     throw error
   }
 
-  ;(module as any).loaded = true
+  for (const aliasId of getModuleFactoryModuleIds(moduleFactory)) {
+    const aliasModule = moduleCache.get(aliasId)
+    if (aliasModule) (aliasModule as any).loaded = true
+  }
   if (module.namespaceObject && module.exports !== module.namespaceObject) {
     // in case of a circular dependency: cjs1 -> esm2 -> cjs1
     interopEsm(module.exports, module.namespaceObject)

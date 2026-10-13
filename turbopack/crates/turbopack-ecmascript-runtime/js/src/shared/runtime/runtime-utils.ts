@@ -56,6 +56,13 @@ let createModuleWithDirectionFlag = false
  * Maps module IDs to the factory functions that instantiate them.
  */
 const moduleFactories: ModuleFactories = new Map()
+const moduleFactoryModuleIds = new WeakMap<Function, ModuleId[]>()
+
+function getModuleFactoryModuleIds(
+  moduleFactory: Function
+): readonly ModuleId[] {
+  return moduleFactoryModuleIds.get(moduleFactory) ?? []
+}
 
 const REEXPORTED_OBJECTS = new WeakMap<Module, ReexportedObjects>()
 
@@ -779,6 +786,11 @@ function installCompressedModuleFactories(
       }
     }
     const factoryToInstall = existingGroupFactory ?? moduleFactoryFn
+    let factoryModuleIds = moduleFactoryModuleIds.get(factoryToInstall)
+    if (!factoryModuleIds) {
+      factoryModuleIds = []
+      moduleFactoryModuleIds.set(factoryToInstall, factoryModuleIds)
+    }
 
     let didInstallFactory = false
     for (let j = i; j < end; j++) {
@@ -791,6 +803,7 @@ function installCompressedModuleFactories(
           didInstallFactory = true
         }
         moduleFactories.set(id, factoryToInstall)
+        factoryModuleIds.push(id)
         newModuleId?.(id)
       }
     }
