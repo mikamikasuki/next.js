@@ -3767,12 +3767,11 @@ export async function cache(
                 if (result.type === 'cached') {
                   const { stream: ignoredStream, pendingCacheResult } = result
 
-                  const savedCacheResult = saveToResumeDataCache(
-                    resumeDataCache,
-                    serializedCacheKey,
-                    pendingCacheResult,
-                    logPrefix
-                  )
+                  // Keep the value this request served in its Resume Data
+                  // Cache. The revalidated value should be visible to later
+                  // requests through the cache handler, not to later renders
+                  // of this request.
+                  const savedCacheResult = pendingCacheResult
 
                   const pendingWrite = cacheHandler
                     ? saveToCacheHandler(
