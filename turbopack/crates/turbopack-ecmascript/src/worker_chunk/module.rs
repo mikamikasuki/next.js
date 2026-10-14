@@ -13,7 +13,10 @@ use turbopack_core::{
     file_source::FileSource,
     ident::AssetIdent,
     module::{Module, ModuleSideEffects},
-    module_graph::{ModuleGraph, chunk_group_info::ChunkGroup},
+    module_graph::{
+        ModuleGraph,
+        chunk_group_info::{ChunkGroup, ChunkGroupKey},
+    },
     output::{OutputAsset, OutputAssets, OutputAssetsWithReferenced},
     reference::{ModuleReference, ModuleReferences, SingleChunkableModuleReference},
     reference_type::{EcmaScriptModulesReferenceSubType, ReferenceType},
@@ -64,6 +67,25 @@ impl WorkerLoaderModule {
         module_graph: Vc<ModuleGraph>,
     ) -> Result<Vc<OutputAssetsWithReferenced>> {
         let this = self.await?;
+
+        let worker_loader: ResolvedVc<Box<dyn Module>> =
+            ResolvedVc::upcast(self.to_resolved().await?);
+        let chunk_group_info = module_graph.chunk_group_info();
+        let worker_group_index = *chunk_group_info
+            .get_index_of(ChunkGroupKey::Isolated(ResolvedVc::upcast(this.inner)))
+            .await?;
+        let loader_chunk_groups = chunk_group_info
+            .module_chunk_groups()
+            .get(&worker_loader)
+            .await?;
+
+        if loader_chunk_groups.is_some_and(|groups| groups.contains(worker_group_index as u32)) {
+            bail!(
+                "Recursive Web Worker reference across a worker boundary detected: the worker \
+                 module graph includes its own worker loader"
+            );
+        }
+
         Ok(match this.worker_type {
             WorkerType::WebWorker | WorkerType::SharedWebWorker => {
                 let ident = this
