@@ -76,4 +76,23 @@ describe('getCloneableBody', () => {
     expect((req as any).end).toBeUndefined()
     expect((await readAllWeb(req as unknown as Readable)).toString()).toBe(body)
   })
+
+  it('preserves request error listeners when finalizing a cloned body', async () => {
+    const req = mockIncoming('hello world')
+    const errors: unknown[] = []
+    const onError = (error: unknown) => errors.push(error)
+    req.on('error', onError)
+
+    const cloneable = getCloneableBody(req)
+    const middlewareCopy = cloneable.cloneBodyStream()
+
+    await readAll(middlewareCopy)
+    await cloneable.finalize()
+
+    expect(req.listeners('error')).toContain(onError)
+
+    const error = new Error('client disconnected')
+    req.emit('error', error)
+    expect(errors).toEqual([error])
+  })
 })

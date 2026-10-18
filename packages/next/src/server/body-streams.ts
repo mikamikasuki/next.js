@@ -23,12 +23,19 @@ function replaceRequestBody<T extends IncomingMessage>(
   base: T,
   stream: Readable
 ): T {
+  const errorListeners = base.rawListeners('error')
+
   for (const key in stream) {
     let v = stream[key as keyof Readable] as any
     if (typeof v === 'function') {
       v = v.bind(base)
     }
     base[key as keyof T] = v
+  }
+
+  // The stream's _events replaces the request's listeners, so restore its error handlers.
+  for (const listener of errorListeners) {
+    base.on('error', listener as (error: Error) => void)
   }
 
   return base
