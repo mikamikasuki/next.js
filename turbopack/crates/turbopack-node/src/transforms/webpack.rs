@@ -277,6 +277,18 @@ async fn build_files_changed(
     Ok(Completion::new())
 }
 
+/// Reads the source content as a strongly consistent root operation before a
+/// transform invokes user code. Session-dependent filesystem reads can return
+/// the previous build's cached value while a restored cache is being refreshed.
+#[turbo_tasks::function(operation, root)]
+pub(crate) async fn read_source_content_strongly_consistent(
+    source: ResolvedVc<Box<dyn Source>>,
+) -> Result<Vc<AssetContent>> {
+    let content = source.content();
+    let _ = content.await?;
+    Ok(content)
+}
+
 /// Returns a completion that changes when any of the loader modules (or their
 /// transitive dependencies) change. This makes editing a loader file invalidate
 /// the cached transform of every module processed by that loader.
@@ -425,8 +437,10 @@ impl WebpackLoadersProcessedAsset {
                 env,
                 node_backend,
             } = &*transform.execution_context.await?;
-            let source_content = self.source.content();
-            let AssetContent::File(file) = *source_content.await? else {
+            let source_content = read_source_content_strongly_consistent(self.source)
+                .read_strongly_consistent()
+                .await?;
+            let AssetContent::File(file) = *source_content else {
                 bail!("Webpack Loaders transform only support transforming files");
             };
             let FileContent::Content(file_content) = &*file.await? else {

@@ -31,7 +31,9 @@ use crate::{
     execution_context::ExecutionContext,
     transforms::{
         util::{EmittedAsset, emitted_assets_to_virtual_sources},
-        webpack::{WebpackLoaderContext, evaluate_webpack_loader},
+        webpack::{
+            WebpackLoaderContext, evaluate_webpack_loader, read_source_content_strongly_consistent,
+        },
     },
 };
 
@@ -499,8 +501,10 @@ impl PostCssTransformedAsset {
             .cell());
         };
 
-        let source_content = self.source.content();
-        let AssetContent::File(file) = *source_content.await? else {
+        let source_content = read_source_content_strongly_consistent(self.source)
+            .read_strongly_consistent()
+            .await?;
+        let AssetContent::File(file) = *source_content else {
             bail!("PostCSS transform only support transforming files");
         };
         let FileContent::Content(content) = &*file.await? else {
