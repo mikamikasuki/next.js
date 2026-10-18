@@ -10,6 +10,11 @@ declare global {
   var __turbopack_module_cache__: Record<ModuleId, any>
   var __turbopack_runtime_modules__: Set<ModuleId>
   /**
+   * Loads Node.js chunks from a stable host module during development so
+   * cached chunks do not retain discarded Turbopack runtime modules.
+   */
+  var __turbopack_nodejs_stable_require__: ((id: string) => unknown) | undefined
+  /**
    * Shared registry of per-runtime server HMR handler entries, keyed by the
    * runtime file's __filename. Map.set() naturally replaces stale entries when
    * a runtime file is re-evaluated. Reset to undefined by the hot-reloader on

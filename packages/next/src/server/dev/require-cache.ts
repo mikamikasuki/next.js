@@ -2,6 +2,21 @@ import isError from '../../lib/is-error'
 import { realpathSync } from '../../lib/realpath'
 import { clearManifestCache } from '../load-manifest.external'
 
+declare const __non_webpack_require__: ((id: string) => unknown) | undefined
+
+const turbopackRuntimeGlobal = globalThis as typeof globalThis & {
+  __turbopack_nodejs_stable_require__?: (id: string) => unknown
+}
+
+// Turbopack runtime files are replaced during development, but chunks loaded
+// by them can remain in require.cache. Keep those chunks parented to this
+// long-lived module so they cannot retain a discarded runtime through Node's
+// private module-parent links.
+turbopackRuntimeGlobal.__turbopack_nodejs_stable_require__ ??=
+  typeof __non_webpack_require__ === 'function'
+    ? __non_webpack_require__
+    : module.require.bind(module)
+
 /**
  * Batch delete modules from require.cache with a single scan.
  *

@@ -79,7 +79,8 @@ function loadRuntimeChunkPath(
 
   try {
     const resolved = path.resolve(RUNTIME_ROOT, chunkPath)
-    const chunkModules: CompressedModuleFactories = require(resolved)
+    const chunkModules: CompressedModuleFactories =
+      loadNodeModule<CompressedModuleFactories>(resolved)
     installCompressedModuleFactories(chunkModules, 0)
     loadedChunks.add(chunkPath)
   } catch (cause) {
@@ -113,7 +114,8 @@ function loadChunkAsync<TModule extends Module>(
       const resolved = path.resolve(RUNTIME_ROOT, chunkPath)
       // TODO: consider switching to `import()` to enable concurrent chunk loading and async file io
       // However this is incompatible with hot reloading (since `import` doesn't use the require cache)
-      const chunkModules: CompressedModuleFactories = require(resolved)
+      const chunkModules: CompressedModuleFactories =
+        loadNodeModule<CompressedModuleFactories>(resolved)
       installCompressedModuleFactories(chunkModules, 0)
       entry = loadedChunk
     } catch (cause) {
@@ -130,6 +132,11 @@ function loadChunkAsync<TModule extends Module>(
   return entry
 }
 contextPrototype.l = loadChunkAsync
+
+function loadNodeModule<T>(modulePath: string): T {
+  const stableRequire = globalThis.__turbopack_nodejs_stable_require__
+  return stableRequire ? (stableRequire(modulePath) as T) : require(modulePath)
+}
 
 function loadChunkAsyncByUrl<TModule extends Module>(
   this: TurbopackBaseContext<TModule>,
