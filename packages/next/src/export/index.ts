@@ -82,6 +82,10 @@ export class ExportError extends Error {
   code = 'NEXT_EXPORT_ERROR'
 }
 
+// Keep worker RPC payloads bounded when pages include serialized resume data
+// caches. A cache-components page can add hundreds of kilobytes to its result.
+const MAX_EXPORT_PATHS_PER_WORKER_CALL = 25
+
 /**
  * Picks an RDC seed by matching on the params that are
  * already known, so fallback shells use a seed that has already
@@ -721,16 +725,48 @@ async function exportAppImpl(
       batches[index % batches.length].push(page)
     })
 
-    return (
-      await Promise.all(
-        batches.map(async (batch) =>
-          worker.exportPages({
+    const resultsByBatch: ExportPagesResult[] = batches.map(() => [])
+
+    // A worker returns all page results from a call in one IPC message. Bound
+    // each call independently of the worker count so a single worker handling
+    // many static pages cannot exceed V8's maximum string length while
+    // serializing its response.
+    for (
+      let offset = 0;
+      offset < pageCountPerBatch;
+      offset += MAX_EXPORT_PATHS_PER_WORKER_CALL
+    ) {
+      const batchResults = await Promise.all(
+        batches.map((batch) => {
+          const exportPathBatch = batch.slice(
+            offset,
+            offset + MAX_EXPORT_PATHS_PER_WORKER_CALL
+          )
+
+          if (exportPathBatch.length === 0) {
+            return [] as ExportPagesResult
+          }
+
+          const batchPageKeys = exportPathBatch.map(({ page, path }) =>
+            page !== path ? `${page}: ${path}` : path
+          )
+          const batchRenderResumeDataCachesByPage =
+            renderResumeDataCachesByPage &&
+            Object.fromEntries(
+              batchPageKeys.flatMap((pageKey) =>
+                renderResumeDataCachesByPage[pageKey]
+                  ? [[pageKey, renderResumeDataCachesByPage[pageKey]]]
+                  : []
+              )
+            )
+
+          return worker.exportPages({
             buildId,
             deploymentId: nextConfig.deploymentId,
             clientAssetToken: nextConfig.supportsImmutableAssets
               ? ''
               : nextConfig.deploymentId,
-            exportPaths: batch,
+            exportPaths: exportPathBatch,
             parentSpanId: span.getId(),
             pagesDataDir,
             renderOpts,
@@ -745,11 +781,17 @@ async function exportAppImpl(
             cacheMaxMemorySize: nextConfig.cacheMaxMemorySize,
             fetchCache: true,
             fetchCacheKeyPrefix: nextConfig.experimental.fetchCacheKeyPrefix,
-            renderResumeDataCachesByPage,
+            renderResumeDataCachesByPage: batchRenderResumeDataCachesByPage,
           })
-        )
+        })
       )
-    ).flat()
+
+      batchResults.forEach((batchResult, batchIndex) => {
+        resultsByBatch[batchIndex].push(...batchResult)
+      })
+    }
+
+    return resultsByBatch.flat()
   }
 
   let initialPhaseExportPaths: ExportPathEntry[] = []
