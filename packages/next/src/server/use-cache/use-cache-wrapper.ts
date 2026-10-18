@@ -3375,6 +3375,9 @@ export async function cache(
                 'leader resolved as prerender-dynamic',
                 cacheHandlerKey
               )
+              if (resumeDataCache?.mutable) {
+                resumeDataCache.cache.set(serializedCacheKey, SESSION_DATA)
+              }
               resolvableSharedCacheResult.resolve({
                 type: 'prerender-dynamic',
                 reason: SESSION_DATA,
